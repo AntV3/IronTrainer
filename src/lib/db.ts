@@ -58,3 +58,55 @@ export async function replacePlan(sessions: PlannedSession[]): Promise<void> {
     await db.plannedSessions.bulkPut(sessions);
   });
 }
+
+/**
+ * Persist a SessionLog and reconcile the matching planned session's status.
+ * Match rule per spec: if duration is within ±20% of plan → COMPLETED, else MODIFIED.
+ * If there is no plan match, the log is still saved but no plan row updates.
+ */
+export async function logSession(
+  log: SessionLog,
+): Promise<{ status: PlannedSession['status'] | null; matchedPlannedId?: string }> {
+  return db.transaction('rw', [db.sessionLogs, db.plannedSessions], async () => {
+    let matched = log.planned_session_id
+      ? await db.plannedSessions.get(log.planned_session_id)
+      : undefined;
+
+    if (!matched) {
+      const sameDay = await db.plannedSessions.where('date').equals(log.date).toArray();
+      matched = sameDay.find((p) => p.sport === log.sport && p.status === 'PLANNED')
+        ?? sameDay.find((p) => p.status === 'PLANNED');
+    }
+
+    let status: PlannedSession['status'] | null = null;
+    if (matched && matched.duration_min > 0) {
+      const ratio = log.duration_min / matched.duration_min;
+      const sameSport = matched.sport === log.sport;
+      status = sameSport && ratio >= 0.8 && ratio <= 1.2 ? 'COMPLETED' : 'MODIFIED';
+      await db.plannedSessions.update(matched.id, { status });
+    } else if (matched) {
+      // matched a rest day or 0-duration plan — anything counts as MODIFIED
+      status = 'MODIFIED';
+      await db.plannedSessions.update(matched.id, { status });
+    }
+
+    await db.sessionLogs.put({
+      ...log,
+      planned_session_id: matched?.id,
+    });
+
+    return { status, matchedPlannedId: matched?.id };
+  });
+}
+
+export async function markSessionSkipped(plannedId: string): Promise<void> {
+  await db.plannedSessions.update(plannedId, { status: 'SKIPPED' });
+}
+
+export async function saveCheckin(checkin: DailyCheckin): Promise<void> {
+  await db.checkins.put(checkin);
+}
+
+export async function getCheckin(date: string): Promise<DailyCheckin | undefined> {
+  return db.checkins.get(date);
+}

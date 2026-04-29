@@ -3,6 +3,8 @@ import { useEffect } from 'react';
 import { useApp } from '@/lib/store';
 import Wizard from '@/features/onboarding/Wizard';
 import Today from '@/features/today/Today';
+import SessionLogger from '@/features/log/SessionLogger';
+import DailyCheckinScreen from '@/features/checkin/DailyCheckin';
 import AppShell from './AppShell';
 
 function Root() {
@@ -46,6 +48,8 @@ export const router = createBrowserRouter([
       {
         element: <RequireProfile />,
         children: [
+          { path: '/log/:date?', element: <SessionLogger /> },
+          { path: '/checkin', element: <DailyCheckinScreen /> },
           {
             element: <AppShell />,
             children: [
