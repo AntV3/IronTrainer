@@ -5,6 +5,7 @@ import Wizard from '@/features/onboarding/Wizard';
 import Today from '@/features/today/Today';
 import SessionLogger from '@/features/log/SessionLogger';
 import DailyCheckinScreen from '@/features/checkin/DailyCheckin';
+import WeekDetail from '@/features/week/WeekDetail';
 import AppShell from './AppShell';
 
 function Root() {
@@ -55,6 +56,7 @@ export const router = createBrowserRouter([
             children: [
               { path: '/', element: <Navigate to="/today" replace /> },
               { path: '/today', element: <Today /> },
+              { path: '/week', element: <WeekDetail /> },
             ],
           },
         ],

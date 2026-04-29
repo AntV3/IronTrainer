@@ -2,6 +2,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { addDays, differenceInCalendarDays, format, parseISO, startOfDay } from 'date-fns';
 import { Link, useNavigate } from 'react-router-dom';
 import { db, markSessionSkipped } from '@/lib/db';
+import { recoveryStatus } from '@/lib/feedback';
 import { useApp } from '@/lib/store';
 import {
   fmtDate,
@@ -15,6 +16,8 @@ import {
   sportLabel,
 } from '@/lib/format';
 import type { DailyCheckin, PlannedSession, SessionLog } from '@/lib/types';
+import FeedbackStack from '@/features/feedback/FeedbackStack';
+import WeekSummaryCard from '@/features/week/WeekSummaryCard';
 
 export default function Today() {
   const profile = useApp((s) => s.profile);
@@ -34,6 +37,10 @@ export default function Today() {
     [today],
   );
   const checkin = useLiveQuery(() => db.checkins.get(today), [today]);
+  const recentCheckins = useLiveQuery(
+    () => db.checkins.where('date').belowOrEqual(today).reverse().limit(8).toArray(),
+    [today],
+  );
 
   if (!profile) return null;
 
@@ -47,6 +54,8 @@ export default function Today() {
   return (
     <div className="mx-auto w-full max-w-xl space-y-5 px-5 pb-20 pt-8">
       <RaceBanner race={profile.race} days={daysToRace} phase={phase} week={weekNumber} />
+
+      <FeedbackStack />
 
       <SectionHeader title="Today" subtitle={fmtDate(today, 'EEEE · MMM d')} />
       {todays && todays.length > 0 ? (
@@ -88,7 +97,9 @@ export default function Today() {
         </Link>
       </div>
 
-      <CheckinSummary checkin={checkin} />
+      <CheckinSummary checkin={checkin} recent={recentCheckins ?? []} />
+
+      <WeekSummaryCard date={today} />
 
       <SectionHeader title="Tomorrow" subtitle={fmtDate(tomorrow, 'EEEE')} />
       {tomorrows && tomorrows.length > 0 ? (
@@ -302,19 +313,31 @@ function UnplannedLogs({ logs }: { logs: SessionLog[] }) {
   );
 }
 
-function CheckinSummary({ checkin }: { checkin?: DailyCheckin }) {
+function CheckinSummary({
+  checkin,
+  recent,
+}: {
+  checkin?: DailyCheckin;
+  recent: DailyCheckin[];
+}) {
   if (!checkin) {
     return (
       <div className="card flex items-center justify-between">
         <div>
           <div className="label">Recovery</div>
           <div className="display mt-1 text-2xl text-signal-yellow">Pending check-in</div>
+          <div className="mt-1 font-mono text-[11px] uppercase tracking-wider2 text-bone-mute">
+            Open the daily check-in to set the traffic light.
+          </div>
         </div>
         <div className="h-3 w-3 animate-pulse rounded-full bg-signal-yellow" />
       </div>
     );
   }
-  const tone = recoveryTone(checkin);
+  const { tone, reason } = recoveryStatus({
+    todayCheckin: checkin,
+    recentCheckins: recent.filter((c) => c.date !== checkin.date),
+  });
   const toneColor =
     tone === 'green' ? 'text-signal-green' : tone === 'yellow' ? 'text-signal-yellow' : 'text-signal-red';
   const dot =
@@ -326,6 +349,9 @@ function CheckinSummary({ checkin }: { checkin?: DailyCheckin }) {
           <div className="label">Recovery</div>
           <div className={'display mt-1 text-2xl ' + toneColor}>
             {tone === 'green' ? 'Ready' : tone === 'yellow' ? 'Caution' : 'Recover'}
+          </div>
+          <div className="mt-1 font-mono text-[11px] uppercase tracking-wider2 text-bone-mute">
+            {reason}
           </div>
         </div>
         <div className={'h-3 w-3 rounded-full ' + dot} />
@@ -341,23 +367,4 @@ function CheckinSummary({ checkin }: { checkin?: DailyCheckin }) {
       </div>
     </div>
   );
-}
-
-function recoveryTone(c: DailyCheckin): 'green' | 'yellow' | 'red' {
-  let score = 0;
-  if (c.sleep_hr != null) {
-    score += c.sleep_hr >= 7.5 ? 1 : c.sleep_hr >= 6.5 ? 0 : -1;
-  }
-  if (c.sleep_quality != null) {
-    score += c.sleep_quality >= 4 ? 1 : c.sleep_quality <= 2 ? -1 : 0;
-  }
-  if (c.energy != null) {
-    score += c.energy >= 7 ? 1 : c.energy <= 4 ? -1 : 0;
-  }
-  if (c.soreness != null) {
-    score += c.soreness >= 7 ? -1 : c.soreness <= 3 ? 1 : 0;
-  }
-  if (score >= 2) return 'green';
-  if (score <= -1) return 'red';
-  return 'yellow';
 }

@@ -1,4 +1,5 @@
 import Dexie, { type Table } from 'dexie';
+import { addDays, format, subDays } from 'date-fns';
 import type {
   DailyCheckin,
   FeedbackEvent,
@@ -6,6 +7,7 @@ import type {
   SessionLog,
   UserProfile,
 } from './types';
+import { evaluateFeedback, weekRangeDates, type FeedbackContext } from './feedback';
 
 export class IronTrainerDB extends Dexie {
   profile!: Table<UserProfile, string>;
@@ -67,46 +69,124 @@ export async function replacePlan(sessions: PlannedSession[]): Promise<void> {
 export async function logSession(
   log: SessionLog,
 ): Promise<{ status: PlannedSession['status'] | null; matchedPlannedId?: string }> {
-  return db.transaction('rw', [db.sessionLogs, db.plannedSessions], async () => {
-    let matched = log.planned_session_id
-      ? await db.plannedSessions.get(log.planned_session_id)
-      : undefined;
+  const result = await db.transaction(
+    'rw',
+    [db.sessionLogs, db.plannedSessions],
+    async () => {
+      let matched = log.planned_session_id
+        ? await db.plannedSessions.get(log.planned_session_id)
+        : undefined;
 
-    if (!matched) {
-      const sameDay = await db.plannedSessions.where('date').equals(log.date).toArray();
-      matched = sameDay.find((p) => p.sport === log.sport && p.status === 'PLANNED')
-        ?? sameDay.find((p) => p.status === 'PLANNED');
-    }
+      if (!matched) {
+        const sameDay = await db.plannedSessions.where('date').equals(log.date).toArray();
+        matched =
+          sameDay.find((p) => p.sport === log.sport && p.status === 'PLANNED') ??
+          sameDay.find((p) => p.status === 'PLANNED');
+      }
 
-    let status: PlannedSession['status'] | null = null;
-    if (matched && matched.duration_min > 0) {
-      const ratio = log.duration_min / matched.duration_min;
-      const sameSport = matched.sport === log.sport;
-      status = sameSport && ratio >= 0.8 && ratio <= 1.2 ? 'COMPLETED' : 'MODIFIED';
-      await db.plannedSessions.update(matched.id, { status });
-    } else if (matched) {
-      // matched a rest day or 0-duration plan — anything counts as MODIFIED
-      status = 'MODIFIED';
-      await db.plannedSessions.update(matched.id, { status });
-    }
+      let status: PlannedSession['status'] | null = null;
+      if (matched && matched.duration_min > 0) {
+        const ratio = log.duration_min / matched.duration_min;
+        const sameSport = matched.sport === log.sport;
+        status = sameSport && ratio >= 0.8 && ratio <= 1.2 ? 'COMPLETED' : 'MODIFIED';
+        await db.plannedSessions.update(matched.id, { status });
+      } else if (matched) {
+        status = 'MODIFIED';
+        await db.plannedSessions.update(matched.id, { status });
+      }
 
-    await db.sessionLogs.put({
-      ...log,
-      planned_session_id: matched?.id,
-    });
+      await db.sessionLogs.put({
+        ...log,
+        planned_session_id: matched?.id,
+      });
 
-    return { status, matchedPlannedId: matched?.id };
-  });
+      return { status, matchedPlannedId: matched?.id };
+    },
+  );
+
+  await refreshFeedback(log.date);
+  return result;
 }
 
 export async function markSessionSkipped(plannedId: string): Promise<void> {
   await db.plannedSessions.update(plannedId, { status: 'SKIPPED' });
+  await refreshFeedback(format(new Date(), 'yyyy-MM-dd'));
 }
 
 export async function saveCheckin(checkin: DailyCheckin): Promise<void> {
   await db.checkins.put(checkin);
+  await refreshFeedback(checkin.date);
 }
 
 export async function getCheckin(date: string): Promise<DailyCheckin | undefined> {
   return db.checkins.get(date);
+}
+
+/** Build a fresh FeedbackContext for `today` from the database. */
+export async function buildFeedbackContext(today: string): Promise<FeedbackContext | null> {
+  const profile = await getProfile();
+  if (!profile) return null;
+
+  const weekDates = weekRangeDates(today);
+  const since = format(subDays(new Date(today), 14), 'yyyy-MM-dd');
+  const tomorrow = format(addDays(new Date(today), 1), 'yyyy-MM-dd');
+
+  const [todayCheckin, recentCheckins, recentLogs, weekPlanned, todaysSessions, tomorrowsSessions] =
+    await Promise.all([
+      db.checkins.get(today),
+      db.checkins.where('date').between(since, today, true, false).sortBy('date'),
+      db.sessionLogs.where('date').between(since, today, true, true).sortBy('logged_at'),
+      db.plannedSessions.where('date').anyOf(weekDates).toArray(),
+      db.plannedSessions.where('date').equals(today).toArray(),
+      db.plannedSessions.where('date').equals(tomorrow).toArray(),
+    ]);
+
+  const thisWeekLogs = await db.sessionLogs
+    .where('date')
+    .anyOf(weekDates)
+    .toArray();
+
+  const raceDate = profile.race.date;
+  const daysToRace = Math.max(
+    0,
+    Math.ceil((new Date(raceDate).getTime() - new Date(today).getTime()) / 86_400_000),
+  );
+
+  return {
+    today,
+    todayCheckin,
+    recentCheckins,
+    recentLogs,
+    thisWeekPlanned: weekPlanned,
+    thisWeekLogs,
+    todaysSessions,
+    tomorrowsSessions,
+    raceDate,
+    daysToRace,
+  };
+}
+
+/**
+ * Evaluate all feedback rules for `today` and persist any new events.
+ * Existing events with the same id are preserved (and their acknowledged state).
+ */
+export async function refreshFeedback(today: string): Promise<FeedbackEvent[]> {
+  const ctx = await buildFeedbackContext(today);
+  if (!ctx) return [];
+  const fresh = evaluateFeedback(ctx);
+  if (!fresh.length) return [];
+
+  const existing = await db.feedback.bulkGet(fresh.map((f) => f.id));
+  const toWrite = fresh.map((f, i) => existing[i] ?? f);
+  await db.feedback.bulkPut(toWrite);
+  return toWrite;
+}
+
+export async function ackFeedback(id: string): Promise<void> {
+  await db.feedback.update(id, { acknowledged: true });
+}
+
+export async function activeFeedback(): Promise<FeedbackEvent[]> {
+  const all = await db.feedback.orderBy('date').reverse().toArray();
+  return all.filter((f) => !f.acknowledged);
 }

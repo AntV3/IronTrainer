@@ -36,7 +36,7 @@ export default function AppShell() {
 function NavBar() {
   const tabs: { to: string; label: string; disabled?: boolean }[] = [
     { to: '/today', label: 'Today' },
-    { to: '/plan', label: 'Plan', disabled: true },
+    { to: '/week', label: 'Week' },
     { to: '/trends', label: 'Trends', disabled: true },
     { to: '/race', label: 'Race', disabled: true },
   ];
