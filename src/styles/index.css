@@ -1,0 +1,68 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html,
+  body,
+  #root {
+    @apply min-h-screen bg-ink text-bone;
+  }
+
+  body {
+    -webkit-tap-highlight-color: transparent;
+    overscroll-behavior-y: none;
+  }
+
+  ::selection {
+    background: rgba(255, 210, 74, 0.35);
+    color: #f4ede0;
+  }
+}
+
+@layer components {
+  .display {
+    @apply font-display uppercase tracking-display;
+  }
+
+  .label {
+    @apply font-mono text-[11px] uppercase tracking-wider2 text-bone-mute;
+  }
+
+  .stat {
+    @apply font-display text-5xl tracking-display text-bone leading-none;
+  }
+
+  .card {
+    @apply rounded-xl border border-white/5 bg-ink-100 p-5 shadow-[0_1px_0_0_rgba(255,255,255,0.03)_inset];
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-3 font-display text-base uppercase tracking-display
+      transition active:scale-[0.98] disabled:opacity-40 disabled:pointer-events-none;
+  }
+  .btn-primary {
+    @apply btn bg-phase-taper text-ink hover:bg-phase-taper/90;
+  }
+  .btn-ghost {
+    @apply btn border border-white/10 text-bone hover:border-white/30;
+  }
+
+  .field {
+    @apply w-full rounded-lg border border-white/10 bg-ink-200 px-4 py-3 text-bone
+      placeholder:text-bone-mute focus:border-phase-taper focus:outline-none focus:ring-0;
+  }
+
+  .chip {
+    @apply inline-flex items-center gap-1 rounded-full border border-white/10 bg-ink-100 px-3 py-1
+      font-mono text-[11px] uppercase tracking-wider2 text-bone-dim;
+  }
+
+  .divider {
+    @apply h-px w-full bg-white/5;
+  }
+
+  .scroll-shadow {
+    mask-image: linear-gradient(to bottom, transparent, black 16px, black calc(100% - 16px), transparent);
+  }
+}

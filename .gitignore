@@ -1,63 +1,36 @@
-# See http://help.github.com/ignore-files/ for more about ignoring files.
-
-# Compiled output
-/dist
-/tmp
-/out-tsc
-# Only exists if Bazel was run
-/bazel-out
-
 # Dependencies
-/node_modules
+node_modules
+.pnpm-store
 
-# Cordova
-/www
-/plugins
-/platforms
+# Build output
+dist
+dist-ssr
+*.local
+*.tsbuildinfo
 
-# Electron
-/dist-electron
-/dist-packages
-/electron.main.js
+# Vite
+.vite
 
-# IDEs and editors
-.idea/*
-!.idea/runConfigurations/
-!.idea/codeStyleSettings.xml
-.project
-.classpath
-.c9/
-*.launch
-.settings/
-xcuserdata/
-*.sublime-workspace
-
-# IDE - VSCode
+# Editors
 .vscode/*
-!.vscode/settings.json
-!.vscode/tasks.json
-!.vscode/launch.json
 !.vscode/extensions.json
-
-# Maven
-/target
-/log
-
-# Misc
-/.angular/cache
-/.sass-cache
-/connect.lock
-/coverage
-/libpeerconnection.log
-npm-debug.log
-yarn-error.log
-testem.log
-/typings
-/reports
-/src/translations/template.*
-/src/environments/.env.*
-/cypress/videos/
-
-# System Files
+.idea
 .DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
 Thumbs.db
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Coverage
+coverage
